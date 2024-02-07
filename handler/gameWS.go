@@ -5,12 +5,18 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/gommon/log"
 	"go-planning-poker/model"
+	"net/http"
 )
+
+func checkOrigin(r *http.Request) bool {
+	return true
+}
 
 var (
 	upgrader = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
+		CheckOrigin:     checkOrigin,
 	}
 )
 
