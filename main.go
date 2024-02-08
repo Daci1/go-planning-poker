@@ -14,7 +14,9 @@ func main() {
 
 	port := fmt.Sprintf("127.0.0.1:%s", os.Getenv("PORT"))
 	app := echo.New()
-	app.GET("/ws", handler.GameWSHandler)
+	app.GET("/join/:game", handler.GameWSHandler)
+	app.POST("/games", handler.CreateGame)
+	app.DELETE("/games/:game", handler.DeleteGameHandler)
 	app.Logger.Fatal(app.Start(port))
 }
 

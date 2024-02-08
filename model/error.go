@@ -14,7 +14,6 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	// marshaledError, _ := json.Marshal(fmt.Sprintf("%s: %s", e.Name, e.Description))
 	marshaledError, _ := json.Marshal(e)
 	return string(marshaledError)
 }

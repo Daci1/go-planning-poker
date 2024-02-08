@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/gommon/log"
 	"go-planning-poker/model"
+	"go-planning-poker/service"
 	"net/http"
 )
 
@@ -20,9 +22,16 @@ var (
 	}
 )
 
-var game = model.NewGame()
-
 func GameWSHandler(c echo.Context) error {
+	gameService := service.GetGameService()
+	gameId := c.Param("game")
+	game, err := gameService.FindGame(gameId)
+
+	if err != nil {
+		log.Errorf("Error when trying connecting to the game %s: [%s]", gameId, err)
+		return c.String(http.StatusNotFound, fmt.Sprintf("Error when trying connecting to the game %s: [%s]", gameId, err))
+	}
+
 	log.Infof("New connection: %s", c.Request().RemoteAddr)
 	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {

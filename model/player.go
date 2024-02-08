@@ -2,25 +2,24 @@ package model
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"log"
+	"github.com/labstack/gommon/log"
 )
 
 type Player struct {
-	Id          uuid.UUID
+	Id          string
 	Name        string
+	Points      float32
 	conn        *websocket.Conn
 	game        *Game
 	egress      chan *Message
 	errorEgress chan []byte
-	// maybe error channel idk
 }
 
 func NewPlayer(name string, game *Game, conn *websocket.Conn) *Player {
 	return &Player{
-		Id:          uuid.New(),
+		Id:          uuid.NewString(),
 		Name:        name,
 		conn:        conn,
 		game:        game,
@@ -30,39 +29,40 @@ func NewPlayer(name string, game *Game, conn *websocket.Conn) *Player {
 }
 
 func (p *Player) ReadMessages() {
+	defer p.game.RemovePlayer(p)
 	for {
-		messageType, payload, err := p.conn.ReadMessage()
+		_, payload, err := p.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
-				fmt.Printf("error reading message: %v", err)
+				log.Errorf("error reading message: %v", err)
 			}
 			break
 		}
 
 		message, err := deserializePayload(payload)
 		if err != nil {
-			fmt.Printf("Error deserializing the payload: %s", err)
+			log.Errorf("Error deserializing the payload: %s", err)
 			p.errorEgress <- []byte(err.Error())
 			continue
 		}
 
+		log.Infof("Sending message [%s] to all other players.", payload)
 		for _, v := range p.game.Players {
 			if v != p {
 				v.egress <- message
 			}
 		}
-		fmt.Println(messageType)
-		fmt.Println(string(payload))
 	}
 }
 
 func (p *Player) WriteMessage() {
+	defer p.game.RemovePlayer(p)
 	for {
 		select {
 		case message, ok := <-p.egress:
 			if !ok {
 				if err := p.conn.WriteMessage(websocket.CloseMessage, nil); err != nil {
-					log.Printf("connection closed: %s\n", err)
+					log.Infof("connection closed: %s\n", err)
 				}
 				return
 			}
@@ -70,24 +70,24 @@ func (p *Player) WriteMessage() {
 			payload, err := json.Marshal(message)
 
 			if err != nil {
-				log.Printf("Error when marshaling message: %s, error message: %s", message, err)
+				log.Errorf("Error when marshaling message: %s, error message: %s", message, err)
 				continue
 			}
 
 			if err := p.conn.WriteMessage(websocket.TextMessage, payload); err != nil {
-				log.Printf("Failed to send message: %v", err)
+				log.Errorf("Failed to send message: %v", err)
 			}
 
 		case errorPayload, ok := <-p.errorEgress:
 			if !ok {
 				if err := p.conn.WriteMessage(websocket.CloseMessage, nil); err != nil {
-					log.Printf("connection closed: %s\n", err)
+					log.Infof("connection closed: %s\n", err)
 				}
 				return
 			}
 
 			if err := p.conn.WriteMessage(websocket.TextMessage, errorPayload); err != nil {
-				log.Printf("Failed to send error message: %v", err)
+				log.Errorf("Failed to send error message: %v", err)
 			}
 		}
 	}
