@@ -5,31 +5,32 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/gommon/log"
+	"go-planning-poker/util"
 )
 
 type Player struct {
-	Id          string
+	Id          uuid.UUID
 	Name        string
-	Points      float32
+	VotedPoints float32
 	conn        *websocket.Conn
-	game        *Game
+	Game        *Game
 	egress      chan *Message
 	errorEgress chan []byte
 }
 
 func NewPlayer(name string, game *Game, conn *websocket.Conn) *Player {
 	return &Player{
-		Id:          uuid.NewString(),
+		Id:          uuid.New(),
 		Name:        name,
 		conn:        conn,
-		game:        game,
+		Game:        game,
 		egress:      make(chan *Message),
 		errorEgress: make(chan []byte),
 	}
 }
 
 func (p *Player) ReadMessages() {
-	defer p.game.RemovePlayer(p)
+	defer p.Game.RemovePlayer(p)
 	for {
 		_, payload, err := p.conn.ReadMessage()
 		if err != nil {
@@ -46,17 +47,52 @@ func (p *Player) ReadMessages() {
 			continue
 		}
 
-		log.Infof("Sending message [%s] to all other players.", payload)
-		for _, v := range p.game.Players {
-			if v != p {
+		switch message.Action {
+		case OnJoin:
+			p.egress <- message
+			for _, v := range p.Game.Players {
+				if v != p {
+					v.egress <- message
+				}
+			}
+			break
+		case OnVote:
+			if val, ok := message.Payload["votedPoints"].(float64); ok {
+				truncatedFloat := util.TruncateFloat32(float32(val), 2)
+				p.VotedPoints = truncatedFloat
+				onVoteMessage := &Message{
+					Action: OnVote,
+					Payload: map[string]interface{}{
+						"player": p.JSON(false),
+					},
+				}
+
+				log.Infof("Sending message [%s] to all other players.", onVoteMessage)
+
+				for _, v := range p.Game.Players {
+					if v != p {
+						v.egress <- onVoteMessage
+					}
+				}
+			} else {
+				p.errorEgress <- []byte("invalid voted points value, must be float64")
+			}
+			break
+		case OnRevealResults:
+			log.Infof("Sending message [%s] to all players.", payload)
+			message.Payload = map[string]interface{}{
+				"players": p.Game.SerializePlayers(true),
+			}
+			for _, v := range p.Game.Players {
 				v.egress <- message
 			}
+			break
 		}
 	}
 }
 
 func (p *Player) WriteMessage() {
-	defer p.game.RemovePlayer(p)
+	defer p.Game.RemovePlayer(p)
 	for {
 		select {
 		case message, ok := <-p.egress:
@@ -91,4 +127,17 @@ func (p *Player) WriteMessage() {
 			}
 		}
 	}
+}
+
+func (p *Player) JSON(shouldIncludeVotedPoints bool) map[string]interface{} {
+	serializedPlayer := map[string]interface{}{
+		"id":   p.Id.String(),
+		"name": p.Name,
+	}
+
+	if shouldIncludeVotedPoints {
+		serializedPlayer["votedPoints"] = p.VotedPoints
+	}
+
+	return serializedPlayer
 }

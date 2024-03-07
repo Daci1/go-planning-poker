@@ -21,6 +21,10 @@ func GetGameService() *GameService {
 		singleInstance = &GameService{
 			games: make(model.GameList),
 		}
+		singleInstance.games["default"] = &model.Game{
+			Players: make(model.PlayerList),
+			GameId:  "default",
+		}
 	}
 	return singleInstance
 }

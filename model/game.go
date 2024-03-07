@@ -7,7 +7,7 @@ import (
 )
 
 type GameList map[string]*Game
-type PlayerList map[string]*Player
+type PlayerList map[uuid.UUID]*Player
 
 type Game struct {
 	GameId  string
@@ -15,11 +15,13 @@ type Game struct {
 	sync.RWMutex
 }
 
-func (g *Game) AddPlayer(p *Player) {
+func (g *Game) AddPlayerToGame(p *Player) {
 	g.Lock()
 	defer g.Unlock()
 
 	g.Players[p.Id] = p
+	g.notifyOtherPlayers(p)
+	g.initCurrentPlayerGame(p)
 }
 
 func (g *Game) RemovePlayer(p *Player) {
@@ -50,4 +52,63 @@ func NewGame() *Game {
 		GameId:  uuid.NewString(),
 		Players: make(PlayerList),
 	}
+}
+
+func (g *Game) notifyOtherPlayers(newPlayer *Player) {
+	newPlayerJoinMessage := &Message{
+		Action: OnJoin,
+		Payload: map[string]interface{}{
+			"player": map[string]string{
+				"id":   newPlayer.Id.String(),
+				"name": newPlayer.Name,
+			},
+		},
+	}
+
+	for _, player := range g.Players {
+		if player != newPlayer {
+
+			player.egress <- newPlayerJoinMessage
+		}
+	}
+}
+
+func (g *Game) initCurrentPlayerGame(p *Player) {
+	currentGameData := &Message{
+		Action: OnInitialJoin,
+		Payload: map[string]interface{}{
+			"game": map[string]interface{}{
+				"id":      g.GameId,
+				"players": serializePlayersExceptCurrent(p, false),
+			},
+		},
+	}
+
+	p.egress <- currentGameData
+}
+
+func serializePlayersExceptCurrent(p *Player, shouldIncludeVotedPoints bool) []map[string]interface{} {
+	players := p.Game.Players
+	serializedPlayers := make([]map[string]interface{}, 0)
+
+	for _, player := range players {
+		if player != p {
+			serializedPlayer := player.JSON(shouldIncludeVotedPoints)
+			serializedPlayers = append(serializedPlayers, serializedPlayer)
+		}
+	}
+
+	return serializedPlayers
+}
+
+func (g *Game) SerializePlayers(shouldIncludeVotedPoints bool) []map[string]interface{} {
+	players := g.Players
+	serializedPlayers := make([]map[string]interface{}, 0)
+
+	for _, player := range players {
+		serializedPlayer := player.JSON(shouldIncludeVotedPoints)
+		serializedPlayers = append(serializedPlayers, serializedPlayer)
+	}
+
+	return serializedPlayers
 }

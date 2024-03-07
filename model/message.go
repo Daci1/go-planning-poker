@@ -2,27 +2,25 @@ package model
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/go-playground/validator/v10"
-	"github.com/google/uuid"
-	"github.com/labstack/gommon/log"
-	"math"
-	"strconv"
 )
 
 type Action string
-type VotedPoints float32
 
 const (
+	OnInitialJoin   Action = "OnInitialJoin"
+	OnJoin          Action = "OnJoin"
 	OnVote          Action = "OnVote"
 	OnRevealResults Action = "OnRevealResults"
 )
 
+type StringOrNumber string
+type Payload map[string]interface{}
+
 type Message struct {
-	Sender      uuid.UUID   `json:"sender"`
-	Action      Action      `json:"action"`
-	VotedPoints VotedPoints `json:"votedPoints" validate:"votedPointsValidator"`
+	Action  Action  `json:"action"`
+	Payload Payload `json:"payload,omitempty"`
 }
 
 func deserializePayload(payload []byte) (*Message, error) {
@@ -40,7 +38,6 @@ func deserializePayload(payload []byte) (*Message, error) {
 
 func validateMessage(m *Message) error {
 	validate := validator.New()
-	validate.RegisterValidation("votedPointsValidator", m.votedPointsValidator)
 
 	return validate.Struct(m)
 }
@@ -48,6 +45,8 @@ func validateMessage(m *Message) error {
 func (a *Action) UnmarshalText(b []byte) error {
 	action := string(b)
 	switch action {
+	case string(OnInitialJoin):
+	case string(OnJoin):
 	case string(OnVote):
 	case string(OnRevealResults):
 		break
@@ -59,20 +58,4 @@ func (a *Action) UnmarshalText(b []byte) error {
 	}
 	*a = Action(action)
 	return nil
-}
-
-func (v *VotedPoints) UnmarshalText(b []byte) error {
-	strVotedPoint := string(b)
-	votedPoint, err := strconv.ParseFloat(strVotedPoint, 32)
-	if err != nil {
-		log.Errorf("Error parsing votedPoints [%s]: [%s]", strVotedPoint, err)
-		return errors.New(fmt.Sprintf("Error parsing votedPoints [%s]: [%s]", strVotedPoint, err))
-	}
-
-	*v = VotedPoints(math.Floor(votedPoint*100) / 100)
-	return nil
-}
-
-func (m *Message) votedPointsValidator(fl validator.FieldLevel) bool {
-	return m.Action == OnVote && m.VotedPoints >= 0
 }

@@ -40,8 +40,8 @@ func GameWSHandler(c echo.Context) error {
 	defer ws.Close()
 
 	player := model.NewPlayer("somePlayer", game, ws)
-	game.AddPlayer(player)
 	go player.WriteMessage()
+	game.AddPlayerToGame(player)
 	player.ReadMessages()
 
 	return nil
